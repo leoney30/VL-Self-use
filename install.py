@@ -154,7 +154,8 @@ def main():
     console.print("2. [yellow]Re-run the installer: [bold]python install.py[/bold][/yellow]")
 
     # start the application
-    subprocess.Popen(["streamlit", "run", "st.py"])
+    # subprocess.Popen(["streamlit", "run", "st.py"])
+    subprocess.Popen(["streamlit"])
 
 if __name__ == "__main__":
     main()
