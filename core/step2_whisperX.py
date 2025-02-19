@@ -18,15 +18,16 @@ from core.all_whisper_methods.demucs_vl import demucs_main, RAW_AUDIO_FILE, VOCA
 from core.all_whisper_methods.whisperX_utils import process_transcription, convert_video_to_audio, split_audio, save_results, save_language, compress_audio, CLEANED_CHUNKS_EXCEL_PATH
 from core.step1_ytdlp import find_video_files
 
-MODEL_DIR = load_key("model_dir")
-WHISPER_FILE = "output/audio/for_whisper.mp3"
-ENHANCED_VOCAL_PATH = "output/audio/enhanced_vocals.mp3"
+# 定义常量路径
+MODEL_DIR = load_key("model_dir")  # 模型存储目录
+WHISPER_FILE = "output/audio/for_whisper.mp3"  # Whisper输入音频文件路径
+ENHANCED_VOCAL_PATH = "output/audio/enhanced_vocals.mp3"  # 增强后的人声文件路径
 
 def check_hf_mirror() -> str:
-    """Check and return the fastest HF mirror"""
+    """检查并返回最快的HuggingFace镜像站点"""
     mirrors = {
-        'Official': 'huggingface.co',
-        'Mirror': 'hf-mirror.com'
+        'Official': 'huggingface.co',  # 官方镜像
+        'Mirror': 'hf-mirror.com'      # 备用镜像
     }
     fastest_url = f"https://{mirrors['Official']}"
     best_time = float('inf')
@@ -53,6 +54,16 @@ def check_hf_mirror() -> str:
     return fastest_url
 
 def transcribe_audio(audio_file: str, start: float, end: float) -> Dict:
+    """
+    使用WhisperX转录音频片段
+    
+    参数:
+        audio_file: 音频文件路径
+        start: 开始时间（秒）
+        end: 结束时间（秒）
+    返回:
+        包含转录结果的字典
+    """
     os.environ['HF_ENDPOINT'] = check_hf_mirror() #? don't know if it's working...
     WHISPER_LANGUAGE = load_key("whisper.language")
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -140,7 +151,14 @@ def transcribe_audio(audio_file: str, start: float, end: float) -> Dict:
         raise
 
 def enhance_vocals(vocals_ratio=2.50):
-    """Enhance vocals audio volume"""
+    """
+    增强人声音量
+    
+    参数:
+        vocals_ratio: 音量增益比例，默认2.50
+    返回:
+        处理后的音频文件路径
+    """
     if not load_key("demucs"):
         return RAW_AUDIO_FILE
         
@@ -159,39 +177,79 @@ def enhance_vocals(vocals_ratio=2.50):
         return VOCAL_AUDIO_FILE  # Fallback to original vocals if enhancement fails
     
 def transcribe():
+    """
+    主转录流程函数，包含以下步骤：
+    1. 视频转音频
+    2. 人声分离（可选）
+    3. 音频压缩
+    4. 音频分段
+    5. 转录处理
+    6. 结果合并与保存
+    """
     if os.path.exists(CLEANED_CHUNKS_EXCEL_PATH):
-        rprint("[yellow]⚠️ Transcription results already exist, skipping transcription step.[/yellow]")
+        rprint("[yellow]⚠️ 转录结果已存在，跳过转录步骤。[/yellow]")
         return
     
-    # step0 Convert video to audio
+    # 步骤0：视频转音频
     video_file = find_video_files()
     convert_video_to_audio(video_file)
 
-    # step1 Demucs vocal separation:
+    # 步骤1：使用Demucs进行人声分离（如果启用）
     if load_key("demucs"):
         demucs_main()
     
-    # step2 Compress audio
+    # 步骤2：压缩音频
     choose_audio = enhance_vocals() if load_key("demucs") else RAW_AUDIO_FILE
     whisper_audio = compress_audio(choose_audio, WHISPER_FILE)
 
-    # step3 Extract audio
+    # 步骤3：分割音频
     segments = split_audio(whisper_audio)
     
-    # step4 Transcribe audio
+    # 步骤4：转录音频片段
     all_results = []
     for start, end in segments:
         result = transcribe_audio(whisper_audio, start, end)
         all_results.append(result)
     
-    # step5 Combine results
+    # 步骤5：合并结果
     combined_result = {'segments': []}
     for result in all_results:
         combined_result['segments'].extend(result['segments'])
     
-    # step6 Process df
+    # 步骤6：处理并保存多种格式的结果
+    # 保存Excel格式（原有功能）
     df = process_transcription(combined_result)
     save_results(df)
-        
+    
+    # 保存纯文本格式
+    output_txt = "output/transcript.txt"
+    with open(output_txt, 'w', encoding='utf-8') as f:
+        for segment in combined_result['segments']:
+            f.write(segment['text'] + '\n')
+    rprint(f"[green]✓ Saved transcript to:[/green] {output_txt}")
+    
+    # 保存SRT格式
+    output_srt = "output/transcript.srt"
+    with open(output_srt, 'w', encoding='utf-8') as f:
+        for i, segment in enumerate(combined_result['segments'], 1):
+            # SRT格式：序号 + 时间码 + 文本 + 空行
+            start = format_timestamp(segment['start'])
+            end = format_timestamp(segment['end'])
+            f.write(f"{i}\n")
+            f.write(f"{start} --> {end}\n")
+            f.write(f"{segment['text']}\n\n")
+    rprint(f"[green]✓ Saved SRT to:[/green] {output_srt}")
+
+def format_timestamp(seconds: float) -> str:
+    """
+    将秒数转换为SRT格式的时间戳 (HH:MM:SS,mmm)
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = seconds % 60
+    milliseconds = int((seconds % 1) * 1000)
+    seconds = int(seconds)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
 if __name__ == "__main__":
     transcribe()
