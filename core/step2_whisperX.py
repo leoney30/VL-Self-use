@@ -14,7 +14,7 @@ import tempfile
 import time
 
 from core.config_utils import load_key
-from core.all_whisper_methods.demucs_vl import demucs_main, RAW_AUDIO_FILE, VOCAL_AUDIO_FILE
+from core.all_whisper_methods.demucs_vl import RAW_AUDIO_FILE, VOCAL_AUDIO_FILE
 from core.all_whisper_methods.whisperX_utils import process_transcription, convert_video_to_audio, split_audio, save_results, save_language, compress_audio, CLEANED_CHUNKS_EXCEL_PATH
 from core.step1_ytdlp import find_video_files
 
